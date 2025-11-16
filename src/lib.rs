@@ -168,16 +168,21 @@ impl Tag {
         let Some(pictures) = self.comments.get_mut(PICTURE_BLOCK_TAG) else {
             return Ok(None);
         };
-        let mut index_to_remove = 0;
+
+        let mut index_to_remove = None;
         for (index, data) in (*pictures).iter().enumerate() {
             if let Ok(pic) = Picture::from_base64(data) {
                 if pic.picture_type == picture_type {
-                    index_to_remove = index;
+                    index_to_remove = Some(index);
                 }
             }
         }
 
-        Picture::from_base64(&pictures.remove(index_to_remove)).map(Some)
+        if let Some(index_to_remove) = index_to_remove {
+            Picture::from_base64(&pictures.remove(index_to_remove)).map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     /// Gets a picture which has a certain picture type, or None if there are no pictures with that
@@ -413,5 +418,36 @@ fn get_end_info(packet: &ogg::Packet) -> PacketWriteEndInfo {
         PacketWriteEndInfo::EndPage
     } else {
         PacketWriteEndInfo::NormalPacket
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_remove_image_with_no_matching_type() {
+        // File contains exactly one image with CoverFront type.
+        let mut tag =
+            Tag::read_from_path("testfiles/silence_cover.opus").expect("Failed to open testfile");
+
+        // Removing different type should not remove anything
+        let remove_result = tag.remove_picture_type(PictureType::Media);
+        assert!(matches!(remove_result, Ok(None)));
+    }
+
+    #[test]
+    fn test_remove_image_when_empty() {
+        // File contains exactly one image with CoverFront type.
+        let mut tag =
+            Tag::read_from_path("testfiles/silence_cover.opus").expect("Failed to open testfile");
+
+        // Removing matching type should remove picture
+        let remove_result = tag.remove_picture_type(PictureType::CoverFront);
+        assert!(matches!(remove_result, Ok(Some(_))));
+
+        // Removing anything with no pictures left should not return anything
+        let remove_result = tag.remove_picture_type(PictureType::CoverFront);
+        assert!(matches!(remove_result, Ok(None)));
     }
 }
